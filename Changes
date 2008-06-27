@@ -1,5 +1,7 @@
-Revision history for MySQL-Insert
+Revision history for MySQL-Insert:
 
-0.01    Date/time
+0.01    20 Jun 2008
         First version, released on an unsuspecting world.
 
+0.02    27 Jun 2008
+	Tests fixed.

@@ -5,6 +5,7 @@ WriteMakefile
           'NAME' => 'MySQL::Insert',
           'VERSION_FROM' => 'lib/MySQL/Insert.pm',
           'PREREQ_PM' => {
+                           'DBI' => 0,
                            'Test::More' => 0
                          },
           'INSTALLDIRS' => 'site',

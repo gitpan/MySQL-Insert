@@ -1,10 +1,9 @@
 Build.PL
 Changes
-MANIFEST
-README
 lib/MySQL/Insert.pm
+Makefile.PL
+MANIFEST
+META.yml
 t/00-load.t
 t/pod-coverage.t
 t/pod.t
-Makefile.PL
-META.yml

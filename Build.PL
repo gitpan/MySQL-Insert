@@ -9,6 +9,7 @@ my $builder = Module::Build->new(
     dist_version_from   => 'lib/MySQL/Insert.pm',
     build_requires => {
         'Test::More' => 0,
+        'DBI' => 0,
     },
     add_to_cleanup      => [ 'MySQL-Insert-*' ],
     create_makefile_pl => 'traditional',
