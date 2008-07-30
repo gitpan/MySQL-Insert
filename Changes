@@ -1,7 +1,13 @@
 Revision history for MySQL-Insert:
 
-0.01    20 Jun 2008
+0.01    20 Jun 2008	Walery Studennikov
         First version, released on an unsuspecting world.
 
-0.02    27 Jun 2008
+0.02    27 Jun 2008	Walery Studennikov
 	Tests fixed.
+
+0.03    29 Jun 2008	Gleb Tumanov
+        Some inserted values may be scalarref for inserting without quoting.
+        Add DESCRIPTION section into pod.
+        Fix error constructor example in Synopsis.
+        

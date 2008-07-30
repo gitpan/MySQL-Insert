@@ -11,7 +11,7 @@ MySQL::Insert - extended inserts for MySQL via DBI
 
 =cut
 
-our $VERSION = '0.02';
+our $VERSION = '0.03';
 
 =head1 SYNOPSIS
 
@@ -21,12 +21,25 @@ our $VERSION = '0.02';
 
     $MySQL::Insert::MAX_ROWS_TO_QUERY = 1000;
 
-    my $inserter = MySQL::Insert->new( $dbh, 'sample_table' );
+    my $inserter = MySQL::Insert->new( $dbh, 'sample_table', [ field_names ] );
 
     $inserter->insert_row( { fldname => 'fldvalue1' } );
     $inserter->insert_row( { fldname => 'fldvalue2' } );
+    
+    # Insert row into sample_table using $dbh database handle
+    # If fldvalue3 is passed as scalar ref then it is not quoted
+    # Used to insert MySQL built-in functions like NOW() and NULL values.
+    
+    $inserter->insert_row( { fldname => \'NOW()' } );
 
     undef $inserter;
+
+=head1 DESCRIPTION
+
+Use multiple-row INSERT syntax that include several VALUES lists.
+(for example INSERT INTO test VALUES ('1',Some data',2234),('2','Some More Data',23444)).
+EXTENDED INSERT syntax is more efficient of execution many insert queries.
+It is not compatible with most RDBMSes.
 
 =head1 FUNCTIONS / METHODS
 
@@ -128,7 +141,12 @@ sub _print_row {
 
     my @data_row = ();
     for my $field (@{$self->{_fields}}) {
-	push @data_row, $self->{_dbh}->quote( $self->{_row}->{$field} || '' );
+	
+        if ( ref $self->{_row}->{$field} eq 'SCALAR' ) {
+            push @data_row, ${$self->{_row}->{$field}} || '';
+        } else {
+            push @data_row, $self->{_dbh}->quote( $self->{_row}->{$field} || '' );    
+        }
     }
 
     push @{$self->{_query_rows}}, "\n\t(".join(', ', @data_row).")";

@@ -1,6 +1,6 @@
 ---
 name: MySQL-Insert
-version: 0.02
+version: 0.03
 author:
   - 'Walery Studennikov <despair@cpan.org>'
 abstract: extended inserts for MySQL via DBI
@@ -13,7 +13,7 @@ build_requires:
 provides:
   MySQL::Insert:
     file: lib/MySQL/Insert.pm
-    version: 0.02
+    version: 0.03
 generated_by: Module::Build version 0.280801
 meta-spec:
   url: http://module-build.sourceforge.net/META-spec-v1.2.html
