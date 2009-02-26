@@ -11,7 +11,7 @@ MySQL::Insert - extended inserts for MySQL via DBI
 
 =cut
 
-our $VERSION = '0.03';
+our $VERSION = '0.05';
 
 =head1 SYNOPSIS
 
@@ -21,7 +21,7 @@ our $VERSION = '0.03';
 
     $MySQL::Insert::MAX_ROWS_TO_QUERY = 1000;
 
-    my $inserter = MySQL::Insert->new( $dbh, 'sample_table', [ field_names ] );
+    my $inserter = MySQL::Insert->new( $dbh, 'sample_table', [ @field_names ] );
 
     $inserter->insert_row( { fldname => 'fldvalue1' } );
     $inserter->insert_row( { fldname => 'fldvalue2' } );
@@ -61,27 +61,56 @@ sub new {
 }
 
 sub _init {
-    my $self = shift;
-    my $dbh = shift;
-    my $table = shift;
-    my $fields = shift;
+    my ($self, $dbh, $table, $fields) = @_;
 
     $self->{_dbh} = $dbh;
-    $self->{_fields} = $fields;
-    $self->{_name_fields} = join ", ", @$fields;
     $self->{_table} = $table;
-    $self->{_finalize_row} = 1;
+
+    $self->set_fields( $fields );
+
+    $self->{_total_rows} = 0;
+    $self->{_do_append_row_to_query} = 0;
     $self->{_query_exists} = 0;
+}
+
+=head2 set_fields
+
+Set fields list (by plain list or list reference)
+
+=cut
+
+sub set_fields {
+    my $self = shift;
+
+    return unless @_ && $_[0];
+
+    my @fields = ref $_[0] ? @{$_[0]} : @_;
+
+    $self->{_fields} = \@fields;
+    $self->{_name_fields} = join ", ", map "`$_`", @fields;
+
+    return 1;
+}
+
+=head2 get_fields
+
+Get fields list (or its quantity in scalar context)
+
+=cut
+
+sub get_fields {
+    my ($self) = @_;
+
+    return unless $self->{_fields};
+    return wantarray ? @{$self->{_fields}} : scalar @{$self->{_fields}};
 }
 
 DESTROY {
     my $self = shift;
 
-    $self->_finish_row;
+    $self->_finish_current_row;
 
-    if ($self->{_query_exists}) {
-	$self->_execute_query();
-    }
+    $self->_execute_query();
 }
 
 =head2 insert_row
@@ -93,29 +122,30 @@ Schedule row for insertion
 sub insert_row {
     my ($self, $new_row) = @_;
 
-    my $query_executed = $self->_finish_row();
+    my $query_executed = $self->_finish_current_row();
 
-    $self->{_finalize_row} = 0;
-    $self->{_row} = $new_row;
+    $self->{_do_append_row_to_query} = 1;
+    $self->{_current_row} = $new_row;
 
     return $query_executed;
 }
 
 # Private methods
 
-sub _finish_row {
+sub _finish_current_row {
     my $self = shift;
 
     my $query_executed;
 
-    if (!$self->{_finalize_row}) {
-	if ($self->{_query_exists} && $self->{_total_rows} >= $MAX_ROWS_TO_QUERY) {
+    if ( $self->{_do_append_row_to_query} ) {
+
+	if ( $self->{_total_rows} >= $MAX_ROWS_TO_QUERY ) {
 	    $query_executed = $self->_execute_query();
 	}
 
-	$self->_print_row;
+	$self->_append_row_to_query_rows;
 
-	$self->{_finalize_row} = 1;
+	$self->{_do_append_row_to_query} = 0;
     }
 
     return $query_executed;
@@ -124,28 +154,40 @@ sub _finish_row {
 sub _execute_query {
     my $self = shift;
 
-    my $query = qq|INSERT IGNORE $self->{_table} ($self->{_name_fields}) VALUES |
-	. join(", ", @{$self->{_query_rows}}). ";\n";
+    return if ! $self->{_query_exists};
+
+    my $query = 
+	qq|INSERT IGNORE $self->{_table} ($self->{_name_fields}) VALUES |
+	. join(", ", @{ $self->{_query_rows} }) . ";\n";
 
     my $result = $self->{_dbh}->do( $query ) or return;
 
+    # clear everyting
     $self->{_query_exists} = 0;
     $self->{_total_rows} = 0;
-    @{$self->{_query_rows}} = ();
+    $self->{_query_rows} = [];
 
     return $result;
 }
 
-sub _print_row {
-    my $self = shift;
+sub _append_row_to_query_rows {
+    my ($self) = @_;
 
-    my @data_row = ();
-    for my $field (@{$self->{_fields}}) {
+    unless ($self->get_fields()) {
+	$self->set_fields( keys %{$self->{_current_row}} );
+    }
+
+    my @data_row;
+    for my $field ($self->get_fields()) {
+
+	my $value = $self->{_current_row}->{ $field };
 	
-        if ( ref $self->{_row}->{$field} eq 'SCALAR' ) {
-            push @data_row, ${$self->{_row}->{$field}} || '';
-        } else {
-            push @data_row, $self->{_dbh}->quote( $self->{_row}->{$field} || '' );    
+	# do not quote scalar refs
+        if ( ref $value eq 'SCALAR' ) {
+            push @data_row, ${ $value } || q{''};
+        }
+	else {
+            push @data_row, $self->{_dbh}->quote( $value || $value );    
         }
     }
 
@@ -167,9 +209,7 @@ Please report any bugs or feature requests to C<bug-mysql-insert at rt.cpan.org>
 the web interface at L<http://rt.cpan.org/NoAuth/ReportBug.html?Queue=MySQL-Insert>.  I will be notified, and then you'll
 automatically be notified of progress on your bug as I make changes.
 
-=head1 COPYRIGHT & LICENSE
-
-Copyright 2008 Gleb Tumanov (gleb at reg.ru), all rights reserved.
+=head1 LICENSE
 
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself.

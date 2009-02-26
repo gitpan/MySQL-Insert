@@ -10,4 +10,11 @@ Revision history for MySQL-Insert:
         Some inserted values may be scalarref for inserting without quoting.
         Add DESCRIPTION section into pod.
         Fix error constructor example in Synopsis.
-        
+
+0.04    26 Dec 2008     Gleb Tumanov
+        Correct insertion NULL values.
+
+0.05	26 Feb 2009	Walery Studennikov
+	Now fields list can be omited in object constructor
+	New accessors: get_fields / set_fields;
+	Tests rewritten (simplified a bit).
