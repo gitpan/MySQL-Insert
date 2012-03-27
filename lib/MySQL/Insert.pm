@@ -11,7 +11,7 @@ MySQL::Insert - extended inserts for MySQL via DBI
 
 =cut
 
-our $VERSION = '0.05';
+our $VERSION = '0.06';
 
 =head1 SYNOPSIS
 
@@ -21,15 +21,25 @@ our $VERSION = '0.05';
 
     $MySQL::Insert::MAX_ROWS_TO_QUERY = 1000;
 
-    my $inserter = MySQL::Insert->new( $dbh, 'sample_table', [ @field_names ] );
+    my $inserter = MySQL::Insert->new( $dbh, 'sample_table', [ @field_names ], %param );
 
+    # Param can be:
+    # statement = 'INSERT' | 'REPLACE' | 'INSERT IGNORE' (by default)
+    # on_duplicate_update = { field_name => field_value, .. } (not used by default)
+
+    # simple insertion
     $inserter->insert_row( { fldname => 'fldvalue1' } );
     $inserter->insert_row( { fldname => 'fldvalue2' } );
-    
+
+    # multirow insertion
+    $inserter->insert_row( { fldname => 'fldvalue3' }, { fldname => 'fldvalue4' } );
+    $inserter->insert_row( [ 'fldvalue5' ], [ 'fldvalue6' ] } );
+
     # Insert row into sample_table using $dbh database handle
     # If fldvalue3 is passed as scalar ref then it is not quoted
     # Used to insert MySQL built-in functions like NOW() and NULL values.
-    
+    # @field_names must be predefined in case of arrayref row data usage
+
     $inserter->insert_row( { fldname => \'NOW()' } );
 
     undef $inserter;
@@ -61,7 +71,7 @@ sub new {
 }
 
 sub _init {
-    my ($self, $dbh, $table, $fields) = @_;
+    my ( $self, $dbh, $table, $fields, %ext_params ) = @_;
 
     $self->{_dbh} = $dbh;
     $self->{_table} = $table;
@@ -71,6 +81,8 @@ sub _init {
     $self->{_total_rows} = 0;
     $self->{_do_append_row_to_query} = 0;
     $self->{_query_exists} = 0;
+    $self->{_statement} = $ext_params{statement} || 'INSERT IGNORE';
+    $self->{_on_duplicate_update} = $ext_params{on_duplicate_update};
 }
 
 =head2 set_fields
@@ -87,7 +99,7 @@ sub set_fields {
     my @fields = ref $_[0] ? @{$_[0]} : @_;
 
     $self->{_fields} = \@fields;
-    $self->{_name_fields} = join ", ", map "`$_`", @fields;
+    $self->{_name_fields} = "( " . ( join ", ", map "`$_`", @fields ) . " )";
 
     return 1;
 }
@@ -120,12 +132,16 @@ Schedule row for insertion
 =cut
 
 sub insert_row {
-    my ($self, $new_row) = @_;
+    my ( $self, @new_rows ) = @_;
 
-    my $query_executed = $self->_finish_current_row();
+    my $query_executed = 0;
 
-    $self->{_do_append_row_to_query} = 1;
-    $self->{_current_row} = $new_row;
+    foreach my $new_row ( @new_rows ) {
+	$query_executed = 1 if $self->_finish_current_row();
+
+	$self->{_do_append_row_to_query} = 1;
+	$self->{_current_row} = $new_row;
+   }
 
     return $query_executed;
 }
@@ -156,9 +172,18 @@ sub _execute_query {
 
     return if ! $self->{_query_exists};
 
-    my $query = 
-	qq|INSERT IGNORE $self->{_table} ($self->{_name_fields}) VALUES |
-	. join(", ", @{ $self->{_query_rows} }) . ";\n";
+    my $values = join ',', @{$self->{_query_rows}};
+
+    my $query = "$self->{_statement} $self->{_table} $self->{_name_fields} VALUES $values";
+
+    if ( $self->{_statement} =~ /^INSERT/i && $self->{_on_duplicate_update} ) {
+
+	my $update_statement = join ', ',
+	    map { "$_ = " . $self->_prepare_value( $self->{_on_duplicate_update}->{$_} ) }
+		keys %{ $self->{_on_duplicate_update} };
+
+	$query .= ' ON DUPLICATE KEY UPDATE ' . $update_statement;
+    }
 
     my $result = $self->{_dbh}->do( $query ) or return;
 
@@ -171,30 +196,40 @@ sub _execute_query {
 }
 
 sub _append_row_to_query_rows {
-    my ($self) = @_;
+    my ( $self ) = @_;
 
-    unless ($self->get_fields()) {
+    unless ( $self->get_fields() ) {
+	die 'Undefined field names!' unless ref $self->{_current_row} eq 'HASH';
+
 	$self->set_fields( keys %{$self->{_current_row}} );
     }
 
     my @data_row;
-    for my $field ($self->get_fields()) {
 
-	my $value = $self->{_current_row}->{ $field };
-	
-	# do not quote scalar refs
-        if ( ref $value eq 'SCALAR' ) {
-            push @data_row, ${ $value } || q{''};
-        }
-	else {
-            push @data_row, $self->{_dbh}->quote( $value || $value );    
-        }
+    if ( ref $self->{_current_row} eq 'HASH' ) {
+	for my $field ( $self->get_fields() ) {
+	    push @data_row, $self->_prepare_value( $self->{_current_row}->{ $field } );
+	}
+    }
+    else {
+	push @data_row, map { $self->_prepare_value( $_ ) } @{ $self->{_current_row} };
     }
 
-    push @{$self->{_query_rows}}, "\n\t(".join(', ', @data_row).")";
+    push @{$self->{_query_rows}}, "\n\t( ".join(', ', @data_row)." )";
 
     $self->{_query_exists} = 1;
     $self->{_total_rows}++;
+}
+
+sub _prepare_value {
+    my ( $self, $value ) = @_;
+
+    if ( ref $value eq 'SCALAR' ) {
+	return ${ $value } || q{''};
+    }
+    else {
+	return $self->{_dbh}->quote( $value );
+    }
 }
 
 

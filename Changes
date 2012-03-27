@@ -18,3 +18,9 @@ Revision history for MySQL-Insert:
 	Now fields list can be omited in object constructor
 	New accessors: get_fields / set_fields;
 	Tests rewritten (simplified a bit).
+
+0.06	10 Mar 2011	Anton Chuvashev
+	Extra params in constructor added
+	Ability to use REPLACE, INSERT and INSERT INGNORE statement
+	Ability to use ON DUPLICATE KEY UPDATE
+	Multirow params in insert_row
